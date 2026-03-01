@@ -20,7 +20,7 @@ class TestMiddlewarePipeline:
     def test_clean_request_preserves_model(self, middleware):
         request = {
             "model": "gpt-4",
-            "messages": [{"role": "user", "content": "What is Python?"}],
+            "messages": [{"role": "user", "content": "How do I sort a list in reverse order?"}],
         }
         processed, has_pii, model, details = middleware.preprocess_request(request)
         assert has_pii is False

@@ -19,7 +19,7 @@ def pii_service():
 class TestBasicPIIDetection:
     def test_no_pii_in_clean_text(self, pii_service):
         has_pii, entities, score = pii_service.detect_pii(
-            "What is the capital of France?"
+            "How do I sort a list in reverse order?"
         )
         assert has_pii is False
         assert entities == []
@@ -34,7 +34,7 @@ class TestBasicPIIDetection:
 
     def test_detects_phone_number(self, pii_service):
         has_pii, entities, score = pii_service.detect_pii(
-            "Call me at 555-123-4567"
+            "My phone number is +1-212-555-1234"
         )
         assert has_pii is True
         types = [e["entity_type"] for e in entities]
@@ -42,7 +42,7 @@ class TestBasicPIIDetection:
 
     def test_detects_ssn(self, pii_service):
         has_pii, entities, score = pii_service.detect_pii(
-            "My social security number is 123-45-6789"
+            "My social security number is 078-05-1120"
         )
         assert has_pii is True
 
