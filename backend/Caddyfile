@@ -1,0 +1,96 @@
+{
+    admin 0.0.0.0:2019
+    log {
+        output file /data/access.log {
+            roll_size 1gb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+}
+
+# Proxy for LiteLLM API
+https://api.pii-proxy.yourdomain.com {
+    reverse_proxy litellm-proxy:8000 {
+        # Health checks
+        health_uri /health
+        health_interval 10s
+        health_timeout 5s
+    }
+
+    # Security headers
+    header {
+        # Prevent MIME-type sniffing
+        X-Content-Type-Options nosniff
+
+        # Prevent clickjacking
+        X-Frame-Options DENY
+
+        # Enable XSS protection
+        X-XSS-Protection "1; mode=block"
+
+        # Strict Transport Security
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # Content Security Policy
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    }
+
+    # Rate limiting
+    rate_limit {
+        zone api {
+            key {remote_host}
+            rate 10r/s
+            burst 20
+        }
+    }
+
+    # Logging
+    log {
+        output file /data/api-access.log
+        format json
+    }
+}
+
+# Proxy for frontend UI (if needed)
+https://app.pii-proxy.yourdomain.com {
+    # Serve static files for frontend
+    root * /usr/share/caddy
+
+    # SPA fallback for frontend routing
+    try_files {path} {path}/ /index.html
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    }
+
+    # Rate limiting
+    rate_limit {
+        zone app {
+            key {remote_host}
+            rate 5r/s
+            burst 10
+        }
+    }
+
+    # Logging
+    log {
+        output file /data/app-access.log
+        format json
+    }
+}
+
+# Default site - redirect to API
+:443 {
+    redir https://api.pii-proxy.yourdomain.com
+}
+
+# HTTP to HTTPS redirect
+:80 {
+    redir https://{host}{uri} permanent
+}

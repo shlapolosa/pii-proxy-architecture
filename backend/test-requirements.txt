@@ -1,0 +1,8 @@
+# Requirements for running tests
+
+# Install the main requirements first
+-r requirements.txt
+
+# Additional test dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0

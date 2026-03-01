@@ -1,0 +1,22 @@
+# Cloudflared Configuration File
+# This file configures the Cloudflare Tunnel connection
+
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /etc/cloudflared/credentials.json
+
+# Ingress rules for routing traffic to services
+ingress:
+  # Route API requests to LiteLLM proxy
+  - hostname: api.pii-proxy.yourdomain.com
+    service: http://litellm-proxy:8000
+
+  # Route frontend requests to Caddy
+  - hostname: app.pii-proxy.yourdomain.com
+    service: http://caddy:80
+
+  # Health check endpoint
+  - hostname: health.pii-proxy.yourdomain.com
+    service: http_status:200
+
+  # Catch-all rule - this should be last
+  - service: http_status:404

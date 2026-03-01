@@ -1,0 +1,34 @@
+# LiteLLM Proxy Configuration
+model_list:
+  - model_name: claude-3-opus
+    litellm_params:
+      model: anthropic/claude-3-opus-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-3-sonnet
+    litellm_params:
+      model: anthropic/claude-3-sonnet-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: gpt-4
+    litellm_params:
+      model: openai/gpt-4
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: llama3
+    litellm_params:
+      model: ollama/llama3
+      api_base: http://ollama:11434
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: sqlite:///litellm.db
+  alerting:
+    - slack
+  slack_webhook_url: os.environ/SLACK_WEBHOOK_URL
+
+environment_variables:
+  ANTHROPIC_API_KEY: os.environ/ANTHROPIC_API_KEY
+  OPENAI_API_KEY: os.environ/OPENAI_API_KEY
+  LITELLM_MASTER_KEY: os.environ/LITELLM_MASTER_KEY
+  SLACK_WEBHOOK_URL: os.environ/SLACK_WEBHOOK_URL
