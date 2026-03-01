@@ -97,7 +97,7 @@ class ErrorHandler:
         return {
             "action": "route_to_local_model",
             "reason": f"PII detection failed: {error}",
-            "model": "llama3",  # Default local model
+            "model": "local-model",  # Default local model
             "safe_to_process": True,
             "error": error
         }

@@ -57,33 +57,55 @@ mypy .
 ## Architecture
 
 ### Request Flow
-1. Client sends chat completion request to **Caddy** (HTTPS termination, auth)
-2. Caddy forwards to **LiteLLM Proxy** (unified LLM API gateway, port 8000)
-3. **PIIMiddleware** (`litellm_middleware.py`) intercepts the request:
-   - Extracts all message content (including multi-modal)
+1. Client sends request to **LiteLLM Proxy** (port 8080 externally, 8000 internally)
+2. **PIIRoutingHook** (`litellm_pii_hook.py`) intercepts via LiteLLM's `async_pre_call_hook`:
+   - Extracts text from the **last user message only** (skips system prompts, conversation history, XML framework tags)
    - Calls **PIIDetectionService** (`pii_detection_service.py`) which uses Microsoft Presidio
-   - If PII detected → routes to local `llama3` (Ollama)
-   - If no PII → routes to user's preferred cloud model
+   - Filters detected entities — only **sensitive PII types** trigger rerouting (see below)
+   - If sensitive PII detected → mutates `data["model"]` to `local-model` (Ollama)
+   - If no sensitive PII → passes through to user's preferred cloud model
    - Fail-safe: routes to local model on any detection error
-4. Response is enriched with PII metadata (`pii_detected`, `pii_risk_score`, `model_switched`)
+3. Response is enriched with PII metadata (`pii_detected`, `pii_risk_score` in usage field)
+
+### PII Entity Types That Trigger Rerouting
+Only these high-sensitivity types cause rerouting to the local model:
+- **`EMAIL_ADDRESS`** — e.g. `john@example.com`
+- **`PHONE_NUMBER`** — e.g. `555-123-4567`
+- **`US_SSN`** — e.g. `123-45-6789`
+- **`CREDIT_CARD`** — e.g. `4111-1111-1111-1111`
+- **`US_BANK_NUMBER`** — bank account numbers
+- **`IBAN_CODE`** — international bank account numbers
+- **`IP_ADDRESS`** — e.g. `192.168.1.100`
+- **`US_PASSPORT`** — passport numbers
+- **`US_DRIVER_LICENSE`** — driver's license numbers
+- **`CRYPTO`** — cryptocurrency wallet addresses
+- **`MEDICAL_LICENSE`** — medical license numbers
+- **`CUSTOMER_ID`** — custom recognizer: `CUST-######`
+- **`EMPLOYEE_ID`** — custom recognizer: `EMP-#####`
+
+These entity types are detected but **do NOT trigger rerouting** (low-risk):
+- `PERSON`, `ORGANIZATION`, `DATE_TIME`, `NRP`, `URL`, `LOCATION`
+
+### What Is NOT Detected
+- Freeform tokens, API keys, or authentication codes (no standard format)
+- Passwords or secrets embedded in natural language
+- Custom internal identifiers not matching the patterns above
 
 ### Key Backend Modules
-- **`litellm_middleware.py`** — Central orchestrator. `PIIMiddleware` has `preprocess_request()` (PII scan + model routing) and `postprocess_response()` (metadata injection). Global instance: `pii_middleware`.
+- **`litellm_pii_hook.py`** — LiteLLM `CustomLogger` hook. `async_pre_call_hook` scans for PII and reroutes. Handles `call_type` values: `completion`, `acompletion`, `text_completion`, `anthropic_messages`. Module-level instance: `proxy_handler_instance`.
 - **`pii_detection_service.py`** — Wraps Microsoft Presidio. `detect_pii()` returns `(has_pii, entities, risk_score)`. Global instance: `pii_service`.
 - **`custom_recognizers.py`** — Domain-specific Presidio recognizers: customer IDs (`CUST-######`), employee IDs (`EMP-#####`), project codes (`PROJ-XX-###`), internal hostnames, medical terms, financial accounts.
-- **`performance_optimizer.py`** — Caching (content hash → result), request batching, resource pooling, circuit breaker.
+- **`litellm_middleware.py`** — Legacy middleware orchestrator (superseded by `litellm_pii_hook.py` for in-process hook).
 - **`error_handler.py`** — Fallback strategies when PII detection fails: block, sanitize, warn, or route-to-local (default).
 - **`notification_handler.py`** — Generates user-facing alerts for PII detection, model switches, errors.
-- **`auth.py`** — API key + JWT authentication, session management.
 
 ### Infrastructure (Docker Compose)
-Six services on `pii-proxy-network` bridge:
-- **litellm-proxy** (port 8000) — LLM gateway, configured via `config.yaml`
-- **ollama** (port 11434) — Local model runner
+Three services on `pii-proxy-network` bridge:
+- **litellm-proxy** (port 8080→8000) — Custom Docker image with Presidio + spaCy + PII hook, configured via `config.yaml`
 - **postgres** (port 5432) — Audit logs (`pii_proxy_db`, user `pii_user`)
 - **redis** (port 6379) — Caching layer
-- **caddy** (ports 80/443) — Reverse proxy with TLS
-- **cloudflared** — Cloudflare tunnel for external access
+
+Local model: **Ollama** `qwen3-coder:480b` hosted externally (configured via `OLLAMA_API_BASE` env var).
 
 ### Frontend (`/frontend`)
 React/TypeScript components (not a full app scaffold — individual component files):
@@ -93,4 +115,4 @@ React/TypeScript components (not a full app scaffold — individual component fi
 - **`NotificationBanner.tsx`** — PII detection and model-switch alerts
 
 ### LiteLLM Model Config (`backend/config.yaml`)
-Models: `claude-3-opus`, `claude-3-sonnet` (Anthropic), `gpt-4` (OpenAI), `llama3` (Ollama local). All API keys read from environment variables.
+Models: `claude-opus-4-6`, `claude-sonnet-4-6` (Anthropic), `gpt-4` (OpenAI), `local-model` → `ollama/qwen3-coder:480b` (Ollama). All API keys read from environment variables. `drop_params: true` set to handle unsupported provider params.

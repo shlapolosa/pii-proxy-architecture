@@ -36,8 +36,8 @@ class TestMiddlewarePipeline:
         }
         processed, has_pii, model, details = middleware.preprocess_request(request)
         assert has_pii is True
-        assert model == "llama3"
-        assert processed["model"] == "llama3"
+        assert model == "local-model"
+        assert processed["model"] == "local-model"
         assert details["risk_score"] > 0
 
     def test_pii_in_conversation_history(self, middleware):
@@ -52,7 +52,7 @@ class TestMiddlewarePipeline:
         }
         processed, has_pii, model, details = middleware.preprocess_request(request)
         assert has_pii is True
-        assert model == "llama3"
+        assert model == "local-model"
 
 
 class TestResponseEnrichment:
@@ -62,7 +62,7 @@ class TestResponseEnrichment:
             "has_pii": True,
             "risk_score": 0.9,
             "original_model": "gpt-4",
-            "selected_model": "llama3",
+            "selected_model": "local-model",
         }
         result = middleware.postprocess_response(response, pii_details)
         assert result["usage"]["pii_detected"] is True

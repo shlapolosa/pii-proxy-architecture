@@ -11,7 +11,7 @@ class TestFallbackStrategies:
         handler = ErrorHandler()
         result = handler.handle_pii_detection_error(ValueError("fail"), "some text")
         assert result["action"] == "route_to_local_model"
-        assert result["model"] == "llama3"
+        assert result["model"] == "local-model"
         assert result["safe_to_process"] is True
 
     def test_block_fallback(self):

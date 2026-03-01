@@ -25,7 +25,7 @@ def _make_middleware(mock_pii_service):
         mw.pii_service = mock_pii_service
         mw.models = {
             "non_sensitive": "claude-3-opus",
-            "sensitive": "llama3",
+            "sensitive": "local-model",
         }
         return mw
 
@@ -58,8 +58,8 @@ class TestPreprocessRequest:
         }
         processed, has_pii, model, details = mw.preprocess_request(request)
         assert has_pii is True
-        assert model == "llama3"
-        assert processed["model"] == "llama3"
+        assert model == "local-model"
+        assert processed["model"] == "local-model"
         assert details["has_pii"] is True
 
     def test_fail_safe_on_detection_error(self):
@@ -73,7 +73,7 @@ class TestPreprocessRequest:
         }
         processed, has_pii, model, details = mw.preprocess_request(request)
         assert has_pii is True  # fail-safe
-        assert model == "llama3"
+        assert model == "local-model"
 
     def test_multimodal_content_extraction(self):
         mock_svc = MagicMock()
@@ -119,7 +119,7 @@ class TestPostprocessResponse:
             "has_pii": True,
             "risk_score": 0.85,
             "original_model": "gpt-4",
-            "selected_model": "llama3",
+            "selected_model": "local-model",
         }
         result = mw.postprocess_response(response, pii_details)
         assert result["usage"]["pii_detected"] is True

@@ -16,7 +16,7 @@ class TestPIINotification:
             "risk_score": 0.85,
             "entities": {"EMAIL_ADDRESS": 1, "PHONE_NUMBER": 1},
             "original_model": "claude-3-opus",
-            "selected_model": "llama3",
+            "selected_model": "local-model",
         }
         notif = self.handler.create_pii_notification(details)
         assert notif["type"] == "pii_detected"
@@ -42,11 +42,11 @@ class TestModelSwitchNotification:
     def test_model_switch_notification(self):
         handler = NotificationHandler()
         notif = handler.create_model_switch_notification(
-            "claude-3-opus", "llama3", "PII detected"
+            "claude-3-opus", "local-model", "PII detected"
         )
         assert notif["type"] == "model_switched"
         assert "claude-3-opus" in notif["message"]
-        assert "llama3" in notif["message"]
+        assert "local-model" in notif["message"]
 
 
 class TestErrorNotification:

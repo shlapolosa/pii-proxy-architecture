@@ -22,7 +22,7 @@ class PIIMiddleware:
         # Default models for different sensitivity levels
         self.models = {
             "non_sensitive": "claude-3-opus",  # Default cloud model for non-sensitive content
-            "sensitive": "llama3"              # Default local model for sensitive content
+            "sensitive": "local-model"              # Default local model for sensitive content
         }
 
     def preprocess_request(self, request_body: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str, Dict]:

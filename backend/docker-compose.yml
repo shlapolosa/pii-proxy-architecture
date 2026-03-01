@@ -1,34 +1,28 @@
 version: '3.8'
 
 services:
-  # LiteLLM Proxy Server
+  # LiteLLM Proxy Server (custom image with Presidio + PII hook)
   litellm-proxy:
-    image: ghcr.io/berriai/litellm:main-latest
+    build: .
     container_name: litellm-proxy
     ports:
-      - "8000:8000"
+      - "8080:8000"
     environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      # - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}  # disabled for UAT
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - DATABASE_URL=postgresql://pii_user:${POSTGRES_PASSWORD}@postgres-db:5432/pii_proxy_db
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE}
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY}
     volumes:
       - ./config.yaml:/app/config.yaml
-      - ./logs:/app/logs
+      - ./pii-events.jsonl:/app/pii-events.jsonl
     command: [--config, /app/config.yaml, --port, "8000"]
     restart: unless-stopped
-    networks:
-      - pii-proxy-network
-
-  # Ollama for local models
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
     networks:
       - pii-proxy-network
 
@@ -42,7 +36,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     restart: unless-stopped
@@ -61,40 +54,9 @@ services:
     networks:
       - pii-proxy-network
 
-  # Cloudflared tunnel
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared-tunnel
-    command: tunnel --no-autoupdate run --token=${CLOUDFLARE_TUNNEL_TOKEN}
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    restart: unless-stopped
-    networks:
-      - pii-proxy-network
-
-  # Caddy reverse proxy
-  caddy:
-    image: caddy:2-alpine
-    container_name: caddy-proxy
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy-data:/data
-      - caddy-config:/config
-    restart: unless-stopped
-    networks:
-      - pii-proxy-network
-    depends_on:
-      - litellm-proxy
-
 volumes:
-  ollama-data:
   postgres-data:
   redis-data:
-  caddy-data:
-  caddy-config:
 
 networks:
   pii-proxy-network:
