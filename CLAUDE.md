@@ -27,8 +27,23 @@ docker-compose logs -f    # View logs
 ### Run tests
 ```bash
 cd backend
-python test_pii_detection.py        # PII detection unit tests (standalone script, not pytest)
-pytest tests/integration            # Integration tests
+source venv/bin/activate
+
+# Tier 1: Unit tests (fast, no spaCy needed, mocked Presidio)
+pytest -m unit                                  # Runs in seconds
+
+# Tier 2: Integration tests (requires spaCy model via ./install.sh)
+pytest -m integration                           # ~30s
+
+# Tier 3: System smoke tests (requires live Docker stack)
+docker-compose up -d
+pytest -m system --system                       # Needs LITELLM_MASTER_KEY env var
+
+# Coverage report
+pytest -m unit --cov=. --cov-report=term-missing
+
+# Legacy standalone script (still works)
+python test_pii_detection.py
 ```
 
 ### Linting/formatting

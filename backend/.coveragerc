@@ -1,0 +1,11 @@
+[run]
+source = .
+omit =
+    tests/*
+    venv/*
+    __pycache__/*
+    test_pii_detection.py
+
+[report]
+show_missing = true
+fail_under = 50
