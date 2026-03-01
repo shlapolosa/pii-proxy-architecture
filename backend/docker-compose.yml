@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # LiteLLM Proxy Server (custom image with Presidio + PII hook)
   litellm-proxy:
@@ -8,55 +6,72 @@ services:
     ports:
       - "8080:8000"
     environment:
-      # - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}  # disabled for UAT
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
-      - DATABASE_URL=postgresql://pii_user:${POSTGRES_PASSWORD}@postgres-db:5432/pii_proxy_db
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - DATABASE_URL=postgresql://${PII_DB_USER:-pii_user}:${POSTGRES_PASSWORD}@${PII_DB_HOST:-pii-postgres-db}:${PII_DB_PORT:-5432}/${PII_DB_NAME:-pii_proxy_db}
+      - REDIS_URL=redis://${PII_REDIS_HOST:-pii-redis-cache}:${PII_REDIS_PORT:-6379}
       - OLLAMA_API_BASE=${OLLAMA_API_BASE}
       - OLLAMA_API_KEY=${OLLAMA_API_KEY}
+      - PII_REROUTE_ENABLED=${PII_REROUTE_ENABLED:-true}
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./pii-events.jsonl:/app/pii-events.jsonl
     command: [--config, /app/config.yaml, --port, "8000"]
     restart: unless-stopped
     depends_on:
-      - postgres
-      - redis
+      pii-postgres:
+        condition: service_healthy
+        required: false
+      pii-redis:
+        condition: service_healthy
+        required: false
     networks:
       - pii-proxy-network
 
-  # PostgreSQL for audit logs and metadata
-  postgres:
+  # PostgreSQL for audit logs and metadata (standalone mode only)
+  pii-postgres:
     image: postgres:15-alpine
-    container_name: postgres-db
+    container_name: pii-postgres-db
+    profiles: ["standalone"]
     environment:
-      POSTGRES_DB: pii_proxy_db
-      POSTGRES_USER: pii_user
+      POSTGRES_DB: ${PII_DB_NAME:-pii_proxy_db}
+      POSTGRES_USER: ${PII_DB_USER:-pii_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      - pii-postgres-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PII_DB_USER:-pii_user} -d ${PII_DB_NAME:-pii_proxy_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - pii-proxy-network
 
-  # Redis for caching
-  redis:
+  # Redis for caching (standalone mode only)
+  pii-redis:
     image: redis:7-alpine
-    container_name: redis-cache
-    ports:
-      - "6379:6379"
+    container_name: pii-redis-cache
+    profiles: ["standalone"]
+    expose:
+      - "6379"
     volumes:
-      - redis-data:/data
+      - pii-redis-data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - pii-proxy-network
 
 volumes:
-  postgres-data:
-  redis-data:
+  pii-postgres-data:
+  pii-redis-data:
 
 networks:
   pii-proxy-network:

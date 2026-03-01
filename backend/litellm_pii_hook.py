@@ -7,6 +7,7 @@ and reroutes sensitive requests to a local model.
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 
 from litellm.integrations.custom_logger import CustomLogger
@@ -16,6 +17,7 @@ from pii_detection_service import pii_service
 logger = logging.getLogger(__name__)
 
 SENSITIVE_MODEL = "local-model"
+PII_REROUTE_ENABLED = os.getenv("PII_REROUTE_ENABLED", "true").lower() == "true"
 PII_EVENT_LOG = "/app/pii-events.jsonl"
 
 # Entity types that trigger rerouting — actual sensitive PII only
@@ -70,12 +72,19 @@ class PIIRoutingHook(CustomLogger):
 
             if has_sensitive_pii:
                 original_model = model
-                data["model"] = SENSITIVE_MODEL
-                logger.info(
-                    f"[PII REROUTE] risk={risk_score:.2f} "
-                    f"entities={self.pii_service.get_pii_summary(sensitive_entities)} "
-                    f"route: {original_model} -> {SENSITIVE_MODEL}"
-                )
+                if PII_REROUTE_ENABLED:
+                    data["model"] = SENSITIVE_MODEL
+                    logger.info(
+                        f"[PII REROUTE] risk={risk_score:.2f} "
+                        f"entities={self.pii_service.get_pii_summary(sensitive_entities)} "
+                        f"route: {original_model} -> {SENSITIVE_MODEL}"
+                    )
+                else:
+                    logger.info(
+                        f"[PII PASSTHROUGH] risk={risk_score:.2f} "
+                        f"entities={self.pii_service.get_pii_summary(sensitive_entities)} "
+                        f"reroute disabled, staying on {model}"
+                    )
             else:
                 if has_pii:
                     logger.info(

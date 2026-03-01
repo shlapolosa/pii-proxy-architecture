@@ -4,6 +4,9 @@
 
 set -e
 
+# Ensure we're in the backend directory
+cd "$(dirname "$0")"
+
 echo "Installing PII Proxy Architecture Backend dependencies..."
 
 # Create virtual environment if it doesn't exist

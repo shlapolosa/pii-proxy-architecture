@@ -85,6 +85,7 @@ The system ensures that sensitive data never leaves your environment while still
 ### Hybrid Model Routing
 - **User preference**: Choose preferred model for non-sensitive requests
 - **Automatic fallback**: Switch to local models when PII detected
+- **Passthrough mode**: Detect and log PII without rerouting (`PII_REROUTE_ENABLED=false`)
 - **Transparency**: Users always know which model is being used
 - **Flexible providers**: Support for Anthropic, OpenAI, and local models
 
@@ -321,16 +322,43 @@ model_list:
 
 ### Docker Compose (`docker-compose.yml`)
 
-Adjust service configurations as needed:
+The compose file supports two deployment modes via **Docker Compose profiles**:
 
-```yaml
-services:
-  litellm-proxy:
-    ports:
-      - "8000:8000"
-    environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+- **Standalone** (default): Brings up its own PostgreSQL and Redis alongside litellm-proxy. Good for local workstation development.
+- **Integrated**: Reuses existing PostgreSQL and Redis from an external Docker stack (e.g., a homelab). Only starts litellm-proxy and connects it to the external network.
+
+Mode is auto-detected by `start.sh` (checks for running external containers) or set explicitly with `PII_INTEGRATED=true`.
+
+#### Standalone Mode
+```bash
+./start.sh
+# Or explicitly:
+PII_INTEGRATED=false ./start.sh
 ```
+
+#### Integrated Mode
+```bash
+# Set in .env or export:
+export PII_INTEGRATED=true
+export EXTERNAL_NETWORK=homelab_default
+./start.sh
+```
+
+#### Key Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PII_INTEGRATED` | auto-detect | `true` for integrated, `false` for standalone |
+| `EXTERNAL_NETWORK` | — | Docker network of external stack (required for integrated) |
+| `EXTERNAL_POSTGRES_CONTAINER` | `postgres` | External postgres container name for auto-detection |
+| `EXTERNAL_REDIS_CONTAINER` | `redis` | External redis container name for auto-detection |
+| `PII_DB_HOST` | `pii-postgres-db` / external | PostgreSQL hostname |
+| `PII_DB_USER` | `pii_user` / `postgres` | PostgreSQL user |
+| `PII_DB_NAME` | `pii_proxy_db` / `postgres` | PostgreSQL database name |
+| `PII_DB_PORT` | `5432` | PostgreSQL port |
+| `PII_REDIS_HOST` | `pii-redis-cache` / external | Redis hostname |
+| `PII_REDIS_PORT` | `6379` | Redis port |
+| `PII_REROUTE_ENABLED` | `true` | `true` = reroute PII requests to local model, `false` = detect and log PII but pass through to original model |
 
 ### Domain Configuration
 
@@ -344,15 +372,16 @@ Update domain names in:
 
 ```bash
 cd ~/Development/pii-proxy-architecture/backend
+cp .env.example .env   # Edit with your actual values
 chmod +x start.sh
 ./start.sh
 ```
 
 This will:
-1. Start all Docker containers
-2. Initialize services
-3. Establish Cloudflare tunnel
-4. Begin listening for requests
+1. Auto-detect deployment mode (standalone vs integrated)
+2. Start Docker containers (all 3 in standalone, or just litellm-proxy in integrated)
+3. Wait for services to become healthy
+4. Report status and API endpoint
 
 ### Claude Code Integration
 
@@ -499,33 +528,34 @@ curl https://api.yourdomain.com/health
 
 ## Testing
 
-### Unit Tests
+### Tier 1: Unit Tests
 
-Run PII detection tests:
+Fast, mocked Presidio, no external dependencies:
 ```bash
 cd backend
-python test_pii_detection.py
+source venv/bin/activate
+pytest -m unit
 ```
 
-### Integration Tests
+### Tier 2: Integration Tests
 
-Test full system functionality:
+Requires spaCy model (via `./install.sh`):
 ```bash
-pytest tests/integration
+pytest -m integration
 ```
 
-### End-to-End Tests
+### Tier 3: System Smoke Tests
 
-Complete workflow testing:
+Requires live Docker stack:
 ```bash
-pytest tests/e2e
+./start.sh
+pytest -m system --system
 ```
 
-### Performance Tests
+### Coverage Report
 
-Load and stress testing:
 ```bash
-pytest tests/performance
+pytest -m unit --cov=. --cov-report=term-missing
 ```
 
 ## Monitoring

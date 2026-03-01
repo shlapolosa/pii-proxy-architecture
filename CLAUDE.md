@@ -18,10 +18,13 @@ source venv/bin/activate
 ### Run services (Docker)
 ```bash
 cd backend
-./start.sh                # Requires env vars: LITELLM_MASTER_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN
-docker-compose up -d      # Or start individually
-docker-compose ps         # Check status
-docker-compose logs -f    # View logs
+./start.sh                # Auto-detects standalone vs integrated mode
+docker compose ps         # Check status
+docker compose logs -f    # View logs
+
+# Explicit mode override:
+PII_INTEGRATED=false ./start.sh   # Force standalone (postgres + redis + litellm-proxy)
+PII_INTEGRATED=true ./start.sh    # Force integrated (litellm-proxy only, joins external network)
 ```
 
 ### Run tests
@@ -62,7 +65,8 @@ mypy .
    - Extracts text from the **last user message only** (skips system prompts, conversation history, XML framework tags)
    - Calls **PIIDetectionService** (`pii_detection_service.py`) which uses Microsoft Presidio
    - Filters detected entities — only **sensitive PII types** trigger rerouting (see below)
-   - If sensitive PII detected → mutates `data["model"]` to `local-model` (Ollama)
+   - If sensitive PII detected and `PII_REROUTE_ENABLED=true` (default) → mutates `data["model"]` to `local-model` (Ollama)
+   - If sensitive PII detected and `PII_REROUTE_ENABLED=false` → logs PII but passes through to original model (passthrough mode)
    - If no sensitive PII → passes through to user's preferred cloud model
    - Fail-safe: routes to local model on any detection error
 3. Response is enriched with PII metadata (`pii_detected`, `pii_risk_score` in usage field)
@@ -100,10 +104,16 @@ These entity types are detected but **do NOT trigger rerouting** (low-risk):
 - **`notification_handler.py`** — Generates user-facing alerts for PII detection, model switches, errors.
 
 ### Infrastructure (Docker Compose)
-Three services on `pii-proxy-network` bridge:
+Dual-mode deployment using Docker Compose profiles:
+
+**Standalone mode** (default) — three services on `pii-proxy-network` bridge:
 - **litellm-proxy** (port 8080→8000) — Custom Docker image with Presidio + spaCy + PII hook, configured via `config.yaml`
-- **postgres** (port 5432) — Audit logs (`pii_proxy_db`, user `pii_user`)
-- **redis** (port 6379) — Caching layer
+- **pii-postgres** (expose 5432, profile `standalone`) — Audit logs (`pii_proxy_db`, user `pii_user`)
+- **pii-redis** (expose 6379, profile `standalone`) — Caching layer
+
+**Integrated mode** — only litellm-proxy starts, joins external Docker network via `docker network connect`. Reuses external postgres/redis containers. Configured via `PII_INTEGRATED=true` + `EXTERNAL_NETWORK` env vars.
+
+`start.sh` auto-detects mode by checking if external postgres/redis containers are running, or accepts explicit `PII_INTEGRATED=true/false`. DB/Redis hosts are env-var-driven (`PII_DB_HOST`, `PII_REDIS_HOST`, etc.) with sensible defaults per mode.
 
 Local model: **Ollama** `qwen3-coder:480b` hosted externally (configured via `OLLAMA_API_BASE` env var).
 
